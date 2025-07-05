@@ -103,8 +103,11 @@ function sendDailyReportCore() {
     rows.forEach(r => {
       if (r[0] instanceof Date) lastDate = r[0];
       if (lastDate && Utilities.formatDate(lastDate, tz, 'yyyy/MM/dd') === yStr) {
-        const slot = r[1], web = Number(r[2])||0, onl = Number(r[3])||0;
-        lines.push(`・${slot}: ${web+onl}枚 (Web:${web}枚, 現地:${onl}枚)`);
+        const slot = r[1];
+        if (slot && typeof slot === 'string' && slot.trim() !== '') {
+          const web = Number(r[2])||0, onl = Number(r[3])||0;
+          lines.push(`・${slot.trim()}: ${web+onl}枚 (Web:${web}枚, 現地:${onl}枚)`);
+        }
       }
     });
     if (lines.length === 0) {
