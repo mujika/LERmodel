@@ -104,9 +104,9 @@ function sendDailyReportCore() {
       if (r[0] instanceof Date) lastDate = r[0];
       if (lastDate && Utilities.formatDate(lastDate, tz, 'yyyy/MM/dd') === yStr) {
         const slot = r[1];
-        if (slot && typeof slot === 'string' && slot.trim() !== '') {
+        if (slot && slot.toString().trim() !== '') {
           const web = Number(r[2])||0, onl = Number(r[3])||0;
-          lines.push(`・${slot.trim()}: ${web+onl}枚 (Web:${web}枚, 現地:${onl}枚)`);
+          lines.push(`・${slot.toString().trim()}: ${web+onl}枚 (Web:${web}枚, 現地:${onl}枚)`);
         }
       }
     });
