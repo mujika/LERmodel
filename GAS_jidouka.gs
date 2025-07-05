@@ -24,11 +24,46 @@ function getTargetSheetNames() {
 }
 
 /**
- * ----- 設定項目 -----
- * メール送信先（To と Cc）
+ * シートからメールアドレス設定を取得
+ * F6セル: TO宛先
+ * F12〜F17セル: CC宛先
  */
-const RECIPIENT_TO = '';
-const RECIPIENT_CC = ',,';
+function getEmailSettings() {
+  const sheetNames = getTargetSheetNames();
+  const firstSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetNames[0]);
+  
+  if (!firstSheet) {
+    throw new Error('設定シートが見つかりません');
+  }
+  
+  // F6セルからTO宛先を取得
+  const toAddress = firstSheet.getRange('F6').getValue();
+  if (!toAddress || typeof toAddress !== 'string') {
+    throw new Error('TO宛先メールアドレスが設定されていません（F6セル）');
+  }
+  
+  // F12〜F17セルからCC宛先を取得
+  const ccRange = firstSheet.getRange('F12:F17');
+  const ccValues = ccRange.getValues();
+  const ccAddresses = [];
+  
+  ccValues.forEach(row => {
+    const email = row[0];
+    if (email && typeof email === 'string' && email.trim() !== '') {
+      ccAddresses.push(email.trim());
+    }
+  });
+  
+  const ccString = ccAddresses.join(',');
+  
+  Logger.log('TO宛先: ' + toAddress);
+  Logger.log('CC宛先: ' + ccString);
+  
+  return {
+    to: toAddress.trim(),
+    cc: ccString
+  };
+}
 
 
 function onOpen() {
@@ -156,10 +191,13 @@ function sendDailyReportCore() {
   const body = bodyLines.join('\n');
   const subject = `[日報・週報] ${yStr}`;
 
+  // メールアドレスを動的に取得
+  const emailSettings = getEmailSettings();
+
   // メール送信（複数PDFを添付）
   MailApp.sendEmail({
-    to:          RECIPIENT_TO,
-    cc:          RECIPIENT_CC,
+    to:          emailSettings.to,
+    cc:          emailSettings.cc,
     subject:     subject,
     body:        body,
     attachments: attachments
