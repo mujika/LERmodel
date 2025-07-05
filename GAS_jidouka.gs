@@ -19,7 +19,7 @@ function getTargetSheetNames() {
     throw new Error('対象シートが見つかりません。シート名の先頭に「*」を付けてください。');
   }
   
-  Logger.log('対象シート: ' + targetSheets.join(', '));
+  Logger.log('対象シート: ' + targetSheets.map(name => getDisplaySheetName(name)).join(', '));
   return targetSheets;
 }
 
@@ -70,10 +70,10 @@ function getEmailSettingsForSheet(sheetName) {
   
   const ccString = ccAddresses.join(',');
   
-  Logger.log(`[${sheetName}] TO宛先: ${toAddress}`);
-  Logger.log(`[${sheetName}] 担当者名: ${personName}`);
-  Logger.log(`[${sheetName}] チケット価格: ${ticketPrice}`);
-  Logger.log(`[${sheetName}] CC宛先: ${ccString}`);
+  Logger.log(`[${getDisplaySheetName(sheetName)}] TO宛先: ${toAddress}`);
+  Logger.log(`[${getDisplaySheetName(sheetName)}] 担当者名: ${personName}`);
+  Logger.log(`[${getDisplaySheetName(sheetName)}] チケット価格: ${ticketPrice}`);
+  Logger.log(`[${getDisplaySheetName(sheetName)}] CC宛先: ${ccString}`);
   
   return {
     to: toAddress.trim(),
@@ -89,6 +89,13 @@ function getEmailSettingsForSheet(sheetName) {
 function getEmailSettings() {
   const sheetNames = getTargetSheetNames();
   return getEmailSettingsForSheet(sheetNames[0]);
+}
+
+/**
+ * シート名から表示用の名前を取得（先頭の「*」を除去）
+ */
+function getDisplaySheetName(sheetName) {
+  return sheetName.startsWith('*') ? sheetName.slice(1) : sheetName;
 }
 
 
@@ -127,7 +134,7 @@ function generateDailyReportForSheet(sheetName, date) {
     lines.push('（データがありません）');
   }
   
-  Logger.log(`[${sheetName}] 日報生成完了: ${lines.length}行`);
+  Logger.log(`[${getDisplaySheetName(sheetName)}] 日報生成完了: ${lines.length}行`);
   return lines;
 }
 
@@ -159,7 +166,8 @@ function generateWeeklyReportPDF(sheetName, startDate, endDate) {
   });
   
   // 一時シートに週報を出力
-  const tempName = `${sheetName}_週報`;
+  const displayName = getDisplaySheetName(sheetName);
+  const tempName = `${displayName}_週報`;
   if (ss.getSheetByName(tempName)) {
     ss.deleteSheet(ss.getSheetByName(tempName));
   }
@@ -204,13 +212,13 @@ function generateWeeklyReportPDF(sheetName, startDate, endDate) {
   const blob = UrlFetchApp.fetch(exportUrl, {
     headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() }
   }).getBlob().setName(
-    `${sheetName}_週報_` +
+    `${displayName}_週報_` +
     `${Utilities.formatDate(startDate,tz,'yyyyMMdd')}` +
     `_〜${Utilities.formatDate(endDate,tz,'yyyyMMdd')}.pdf`
   );
   
   ss.deleteSheet(rpt);
-  Logger.log(`[${sheetName}] 週報PDF生成完了`);
+  Logger.log(`[${getDisplaySheetName(sheetName)}] 週報PDF生成完了`);
   return blob;
 }
 
@@ -233,21 +241,22 @@ function sendReportForSheet(sheetName, date) {
   const weeklyPDF = generateWeeklyReportPDF(sheetName, startDate, date);
   
   // メール本文作成
+  const displayName = getDisplaySheetName(sheetName);
   const bodyLines = [
     `${emailSettings.personName}様`,
     '',
     '',
     'お世話になっております。',
-    `日報・週報botより${sheetName}の${dateStr}の日報と週報をお送りします。`,
+    `上映報告botより『${displayName}』の${dateStr}の日報をお送りします。`,
     '',
-    `【${sheetName}】 日報`,
+    `【${displayName}】 日報`,
     ...dailyLines,
     '',
     '以上、ご確認ください。'
   ];
   
   const body = bodyLines.join('\n');
-  const subject = `[日報・週報_${sheetName}] ${dateStr}`;
+  const subject = `『${displayName}』上映報告`;
   
   // メール送信
   MailApp.sendEmail({
@@ -258,7 +267,7 @@ function sendReportForSheet(sheetName, date) {
     attachments: [weeklyPDF]
   });
   
-  Logger.log(`[${sheetName}] メール送信完了`);
+  Logger.log(`[${getDisplaySheetName(sheetName)}] メール送信完了`);
 }
 
 /**
@@ -270,43 +279,44 @@ function processSheetReport(sheetName, date) {
   const tz = ss.getSpreadsheetTimeZone();
   const dateStr = Utilities.formatDate(date, tz, 'yyyy/MM/dd');
   
-  Logger.log(`[${sheetName}] 処理開始: ${dateStr}`);
+  Logger.log(`[${getDisplaySheetName(sheetName)}] 処理開始: ${dateStr}`);
   
   try {
     // 1. メール設定取得
-    Logger.log(`[${sheetName}] メール設定取得中...`);
+    Logger.log(`[${getDisplaySheetName(sheetName)}] メール設定取得中...`);
     const emailSettings = getEmailSettingsForSheet(sheetName);
     
     // 2. 日報データ集計
-    Logger.log(`[${sheetName}] 日報データ集計中...`);
+    Logger.log(`[${getDisplaySheetName(sheetName)}] 日報データ集計中...`);
     const dailyLines = generateDailyReportForSheet(sheetName, date);
     
     // 3. 週報データ集計とPDF生成
-    Logger.log(`[${sheetName}] 週報PDF生成中...`);
+    Logger.log(`[${getDisplaySheetName(sheetName)}] 週報PDF生成中...`);
     const startDate = new Date(date);
     startDate.setDate(date.getDate() - 6);
     const weeklyPDF = generateWeeklyReportPDF(sheetName, startDate, date);
     
     // 4. メール本文作成
-    Logger.log(`[${sheetName}] メール本文作成中...`);
+    Logger.log(`[${getDisplaySheetName(sheetName)}] メール本文作成中...`);
+    const displayName = getDisplaySheetName(sheetName);
     const bodyLines = [
       `${emailSettings.personName}様`,
       '',
       '',
       'お世話になっております。',
-      `日報・週報botより${sheetName}の${dateStr}の日報と週報をお送りします。`,
+      `上映報告botより『${displayName}』の${dateStr}の日報をお送りします。`,
       '',
-      `【${sheetName}】 日報`,
+      `【${displayName}】 日報`,
       ...dailyLines,
       '',
       '以上、ご確認ください。'
     ];
     
     const body = bodyLines.join('\n');
-    const subject = `[日報・週報_${sheetName}] ${dateStr}`;
+    const subject = `『${displayName}』上映報告`;
     
     // 5. メール送信
-    Logger.log(`[${sheetName}] メール送信中...`);
+    Logger.log(`[${getDisplaySheetName(sheetName)}] メール送信中...`);
     MailApp.sendEmail({
       to: emailSettings.to,
       cc: emailSettings.cc,
@@ -315,10 +325,10 @@ function processSheetReport(sheetName, date) {
       attachments: [weeklyPDF]
     });
     
-    Logger.log(`[${sheetName}] 処理完了: メール送信済み`);
+    Logger.log(`[${getDisplaySheetName(sheetName)}] 処理完了: メール送信済み`);
     
   } catch (error) {
-    Logger.log(`[${sheetName}] 処理エラー: ${error.message}`);
+    Logger.log(`[${getDisplaySheetName(sheetName)}] 処理エラー: ${error.message}`);
     throw error;
   }
 }
@@ -334,7 +344,7 @@ function sendAllSheetReports(date) {
     try {
       sendReportForSheet(sheetName, yesterday);
     } catch (error) {
-      Logger.log(`[${sheetName}] 送信エラー: ${error.message}`);
+      Logger.log(`[${getDisplaySheetName(sheetName)}] 送信エラー: ${error.message}`);
     }
   });
   
@@ -367,7 +377,8 @@ function sendDailyReportSequential(date) {
     
     // 各シートを順次処理
     sheetNames.forEach((sheetName, index) => {
-      Logger.log(`--- ${index + 1}/${sheetNames.length}: ${sheetName} ---`);
+      const displayName = getDisplaySheetName(sheetName);
+      Logger.log(`--- ${index + 1}/${sheetNames.length}: ${displayName} (${sheetName}) ---`);
       
       try {
         // シート単位の完全処理実行
@@ -380,7 +391,7 @@ function sendDailyReportSequential(date) {
           sheetName: sheetName,
           error: error.message
         });
-        Logger.log(`[${sheetName}] 処理失敗: ${error.message}`);
+        Logger.log(`[${getDisplaySheetName(sheetName)}] 処理失敗: ${error.message}`);
       }
       
       // 次のシートへ進む前に少し待機（API制限対策）
