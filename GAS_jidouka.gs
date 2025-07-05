@@ -1,6 +1,27 @@
 // ── 設定項目 ──
-/** 日報を取る対象シート名 */
-const SHEET_NAMES   = ['。', '', ''];
+/**
+ * 日報を取る対象シート名を動的に取得
+ * シート名の先頭が「*」で始まるシートを対象とする
+ */
+function getTargetSheetNames() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheets = ss.getSheets();
+  const targetSheets = [];
+  
+  sheets.forEach(sheet => {
+    const sheetName = sheet.getName();
+    if (sheetName.startsWith('*')) {
+      targetSheets.push(sheetName);
+    }
+  });
+  
+  if (targetSheets.length === 0) {
+    throw new Error('対象シートが見つかりません。シート名の先頭に「*」を付けてください。');
+  }
+  
+  Logger.log('対象シート: ' + targetSheets.join(', '));
+  return targetSheets;
+}
 
 /**
  * ----- 設定項目 -----
@@ -36,7 +57,8 @@ function sendDailyReportCore() {
   // PDF blob をためておく配列
   const attachments = [];
 
-  SHEET_NAMES.forEach(sheetName => {
+  const sheetNames = getTargetSheetNames();
+  sheetNames.forEach(sheetName => {
     // --- 日報部分 ---
     const sheet = ss.getSheetByName(sheetName);
     if (!sheet) throw new Error(`シート「${sheetName}」が見つかりません`);
