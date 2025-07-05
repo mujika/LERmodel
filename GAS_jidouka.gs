@@ -98,6 +98,25 @@ function getDisplaySheetName(sheetName) {
   return sheetName.startsWith('*') ? sheetName.slice(1) : sheetName;
 }
 
+/**
+ * 曜日判定ヘルパー関数
+ * @param {Date} date - 判定対象の日付
+ * @param {number} dayOfWeek - 曜日（0=日曜日, 1=月曜日, ..., 5=金曜日, 6=土曜日）
+ * @returns {boolean} 指定曜日かどうか
+ */
+function isDayOfWeek(date, dayOfWeek) {
+  return date.getDay() === dayOfWeek;
+}
+
+/**
+ * 金曜日かどうかを判定
+ * @param {Date} date - 判定対象の日付
+ * @returns {boolean} 金曜日かどうか
+ */
+function isFriday(date) {
+  return isDayOfWeek(date, 5);
+}
+
 
 /**
  * 指定シートの日報を生成
@@ -271,6 +290,127 @@ function sendReportForSheet(sheetName, date) {
 }
 
 /**
+ * 指定シートの日報のみ処理を実行
+ * （集計 → メール送信）
+ */
+function processSheetReportDaily(sheetName, date) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const tz = ss.getSpreadsheetTimeZone();
+  const dateStr = Utilities.formatDate(date, tz, 'yyyy/MM/dd');
+  
+  Logger.log(`[${getDisplaySheetName(sheetName)}] 日報処理開始: ${dateStr}`);
+  
+  try {
+    // 1. メール設定取得
+    Logger.log(`[${getDisplaySheetName(sheetName)}] メール設定取得中...`);
+    const emailSettings = getEmailSettingsForSheet(sheetName);
+    
+    // 2. 日報データ集計
+    Logger.log(`[${getDisplaySheetName(sheetName)}] 日報データ集計中...`);
+    const dailyLines = generateDailyReportForSheet(sheetName, date);
+    
+    // 3. メール本文作成
+    Logger.log(`[${getDisplaySheetName(sheetName)}] メール本文作成中...`);
+    const displayName = getDisplaySheetName(sheetName);
+    const bodyLines = [
+      `${emailSettings.personName}様`,
+      '',
+      '',
+      'お世話になっております。',
+      `上映報告botより『${displayName}』の${dateStr}の日報をお送りします。`,
+      '',
+      `【${displayName}】 日報`,
+      ...dailyLines,
+      '',
+      '以上、ご確認ください。'
+    ];
+    
+    const body = bodyLines.join('\n');
+    const subject = `『${displayName}』上映報告`;
+    
+    // 4. メール送信（PDF添付なし）
+    Logger.log(`[${getDisplaySheetName(sheetName)}] メール送信中...`);
+    MailApp.sendEmail({
+      to: emailSettings.to,
+      cc: emailSettings.cc,
+      subject: subject,
+      body: body
+    });
+    
+    Logger.log(`[${getDisplaySheetName(sheetName)}] 日報処理完了: メール送信済み`);
+    
+  } catch (error) {
+    Logger.log(`[${getDisplaySheetName(sheetName)}] 日報処理エラー: ${error.message}`);
+    throw error;
+  }
+}
+
+/**
+ * 指定シートの日報・週報処理を実行（金曜日用）
+ * （集計 → PDF生成 → メール送信 → 一時ファイル削除）
+ */
+function processSheetReportWithWeekly(sheetName, date) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const tz = ss.getSpreadsheetTimeZone();
+  const dateStr = Utilities.formatDate(date, tz, 'yyyy/MM/dd');
+  
+  Logger.log(`[${getDisplaySheetName(sheetName)}] 日報・週報処理開始: ${dateStr}`);
+  
+  try {
+    // 1. メール設定取得
+    Logger.log(`[${getDisplaySheetName(sheetName)}] メール設定取得中...`);
+    const emailSettings = getEmailSettingsForSheet(sheetName);
+    
+    // 2. 日報データ集計
+    Logger.log(`[${getDisplaySheetName(sheetName)}] 日報データ集計中...`);
+    const dailyLines = generateDailyReportForSheet(sheetName, date);
+    
+    // 3. 週報データ集計とPDF生成
+    Logger.log(`[${getDisplaySheetName(sheetName)}] 週報PDF生成中...`);
+    const startDate = new Date(date);
+    startDate.setDate(date.getDate() - 6);
+    const weeklyPDF = generateWeeklyReportPDF(sheetName, startDate, date);
+    
+    // 4. メール本文作成（週報添付メッセージ付き）
+    Logger.log(`[${getDisplaySheetName(sheetName)}] メール本文作成中...`);
+    const displayName = getDisplaySheetName(sheetName);
+    const bodyLines = [
+      `${emailSettings.personName}様`,
+      '',
+      '',
+      'お世話になっております。',
+      `上映報告botより『${displayName}』の${dateStr}の日報をお送りします。`,
+      '',
+      `【${displayName}】 日報`,
+      ...dailyLines,
+      '',
+      '週報を添付させていただきます。',
+      '',
+      '以上、ご確認ください。'
+    ];
+    
+    const body = bodyLines.join('\n');
+    const subject = `『${displayName}』上映報告`;
+    
+    // 5. メール送信（PDF添付あり）
+    Logger.log(`[${getDisplaySheetName(sheetName)}] メール送信中...`);
+    MailApp.sendEmail({
+      to: emailSettings.to,
+      cc: emailSettings.cc,
+      subject: subject,
+      body: body,
+      attachments: [weeklyPDF]
+    });
+    
+    Logger.log(`[${getDisplaySheetName(sheetName)}] 日報・週報処理完了: メール送信済み`);
+    
+  } catch (error) {
+    Logger.log(`[${getDisplaySheetName(sheetName)}] 日報・週報処理エラー: ${error.message}`);
+    throw error;
+  }
+}
+
+/**
  * 指定シートの完全な日報・週報処理を実行
  * （集計 → PDF生成 → メール送信 → 一時ファイル削除）
  */
@@ -352,8 +492,8 @@ function sendAllSheetReports(date) {
 }
 
 /**
- * 全シートの日報・週報を順次処理で送信
- * （各シートごとに：集計 → PDF生成 → メール送信 → 次のシートへ）
+ * 全シートの日報のみを順次処理で送信（平日用）
+ * （各シートごとに：集計 → メール送信 → 次のシートへ）
  */
 function sendDailyReportSequential(date) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -361,7 +501,7 @@ function sendDailyReportSequential(date) {
   const targetDate = date || new Date(new Date().getTime() - 24 * 60 * 60 * 1000);
   const dateStr = Utilities.formatDate(targetDate, tz, 'yyyy/MM/dd');
   
-  Logger.log(`=== 順次処理開始: ${dateStr} ===`);
+  Logger.log(`=== 日報順次処理開始: ${dateStr} ===`);
   
   try {
     // 対象シート取得
@@ -381,8 +521,8 @@ function sendDailyReportSequential(date) {
       Logger.log(`--- ${index + 1}/${sheetNames.length}: ${displayName} (${sheetName}) ---`);
       
       try {
-        // シート単位の完全処理実行
-        processSheetReport(sheetName, targetDate);
+        // 日報のみ処理を実行
+        processSheetReportDaily(sheetName, targetDate);
         results.success++;
         
       } catch (error) {
@@ -401,7 +541,7 @@ function sendDailyReportSequential(date) {
     });
     
     // 処理結果のサマリー
-    Logger.log(`=== 順次処理完了: ${dateStr} ===`);
+    Logger.log(`=== 日報順次処理完了: ${dateStr} ===`);
     Logger.log(`成功: ${results.success}/${results.total}シート`);
     Logger.log(`失敗: ${results.failed}/${results.total}シート`);
     
@@ -415,7 +555,76 @@ function sendDailyReportSequential(date) {
     return results;
     
   } catch (error) {
-    Logger.log(`順次処理全体エラー: ${error.message}`);
+    Logger.log(`日報順次処理全体エラー: ${error.message}`);
+    throw error;
+  }
+}
+
+/**
+ * 全シートの日報・週報を順次処理で送信（金曜日用）
+ * （各シートごとに：集計 → PDF生成 → メール送信 → 次のシートへ）
+ */
+function sendDailyReportWithWeeklySequential(date) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const tz = ss.getSpreadsheetTimeZone();
+  const targetDate = date || new Date(new Date().getTime() - 24 * 60 * 60 * 1000);
+  const dateStr = Utilities.formatDate(targetDate, tz, 'yyyy/MM/dd');
+  
+  Logger.log(`=== 日報・週報順次処理開始: ${dateStr} ===`);
+  
+  try {
+    // 対象シート取得
+    const sheetNames = getTargetSheetNames();
+    Logger.log(`対象シート数: ${sheetNames.length}個`);
+    
+    const results = {
+      total: sheetNames.length,
+      success: 0,
+      failed: 0,
+      errors: []
+    };
+    
+    // 各シートを順次処理
+    sheetNames.forEach((sheetName, index) => {
+      const displayName = getDisplaySheetName(sheetName);
+      Logger.log(`--- ${index + 1}/${sheetNames.length}: ${displayName} (${sheetName}) ---`);
+      
+      try {
+        // 日報・週報処理を実行
+        processSheetReportWithWeekly(sheetName, targetDate);
+        results.success++;
+        
+      } catch (error) {
+        results.failed++;
+        results.errors.push({
+          sheetName: sheetName,
+          error: error.message
+        });
+        Logger.log(`[${getDisplaySheetName(sheetName)}] 処理失敗: ${error.message}`);
+      }
+      
+      // 次のシートへ進む前に少し待機（API制限対策）
+      if (index < sheetNames.length - 1) {
+        Utilities.sleep(1000);
+      }
+    });
+    
+    // 処理結果のサマリー
+    Logger.log(`=== 日報・週報順次処理完了: ${dateStr} ===`);
+    Logger.log(`成功: ${results.success}/${results.total}シート`);
+    Logger.log(`失敗: ${results.failed}/${results.total}シート`);
+    
+    if (results.errors.length > 0) {
+      Logger.log('エラー詳細:');
+      results.errors.forEach(err => {
+        Logger.log(`  - ${err.sheetName}: ${err.error}`);
+      });
+    }
+    
+    return results;
+    
+  } catch (error) {
+    Logger.log(`日報・週報順次処理全体エラー: ${error.message}`);
     throw error;
   }
 }
@@ -425,6 +634,9 @@ function onOpen() {
     .createMenu('日報・週報メール')
     .addItem('手動で送信（統合）', 'manualDailyReport')
     .addItem('手動で送信（個別）', 'manualIndividualReport')
+    .addSeparator()
+    .addItem('テスト：日報のみ送信', 'manualDailyReportOnly')
+    .addItem('テスト：日報・週報送信', 'manualDailyReportWithWeekly')
     .addToUi();
 }
 
@@ -492,10 +704,63 @@ function manualIndividualReport() {
   }
 }
 
+/** 手動実行用（日報のみテスト） */
+function manualDailyReportOnly() {
+  const ui = SpreadsheetApp.getUi();
+  try {
+    const yesterday = new Date(new Date().getTime() - 24 * 60 * 60 * 1000);
+    
+    const results = sendDailyReportSequential(yesterday);
+    
+    if (results.failed === 0) {
+      ui.alert(`日報のみを送信しました\n成功: ${results.success}/${results.total}シート`);
+    } else {
+      ui.alert(`日報送信が完了しました\n成功: ${results.success}/${results.total}シート\n失敗: ${results.failed}/${results.total}シート\n\n詳細はログを確認してください。`);
+    }
+  } catch (e) {
+    ui.alert('エラーが発生しました:\n' + e.message);
+    Logger.log(e.stack);
+  }
+}
+
+/** 手動実行用（日報・週報テスト） */
+function manualDailyReportWithWeekly() {
+  const ui = SpreadsheetApp.getUi();
+  try {
+    const yesterday = new Date(new Date().getTime() - 24 * 60 * 60 * 1000);
+    
+    const results = sendDailyReportWithWeeklySequential(yesterday);
+    
+    if (results.failed === 0) {
+      ui.alert(`日報・週報を送信しました\n成功: ${results.success}/${results.total}シート`);
+    } else {
+      ui.alert(`日報・週報送信が完了しました\n成功: ${results.success}/${results.total}シート\n失敗: ${results.failed}/${results.total}シート\n\n詳細はログを確認してください。`);
+    }
+  } catch (e) {
+    ui.alert('エラーが発生しました:\n' + e.message);
+    Logger.log(e.stack);
+  }
+}
+
 /** トリガー用（UI 呼び出しなし） */
 function triggerDailyReport() {
   try {
-    sendDailyReportCore();
+    const today = new Date();
+    const yesterday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1);
+    
+    Logger.log(`triggerDailyReport開始: ${Utilities.formatDate(yesterday, SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone(), 'yyyy/MM/dd (E)')}`);
+    
+    // 金曜日かどうかで処理を分岐
+    if (isFriday(yesterday)) {
+      Logger.log('金曜日のため、日報・週報を送信します');
+      const results = sendDailyReportWithWeeklySequential(yesterday);
+      Logger.log(`日報・週報送信完了: 成功${results.success}件、失敗${results.failed}件`);
+    } else {
+      Logger.log('平日のため、日報のみを送信します');
+      const results = sendDailyReportSequential(yesterday);
+      Logger.log(`日報送信完了: 成功${results.success}件、失敗${results.failed}件`);
+    }
+    
   } catch (e) {
     Logger.log('自動送信エラー: ' + e.stack);
   }
