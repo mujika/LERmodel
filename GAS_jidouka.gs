@@ -114,7 +114,7 @@ function isDayOfWeek(date, dayOfWeek) {
  * @returns {boolean} 金曜日かどうか
  */
 function isFriday(date) {
-  return isDayOfWeek(date, 5);
+  return isDayOfWeek(date, 4);
 }
 
 
@@ -169,6 +169,10 @@ function generateWeeklyReportPDF(sheetName, startDate, endDate) {
     throw new Error(`シート「${sheetName}」が見つかりません`);
   }
   
+  // チケット価格を取得
+  const emailSettings = getEmailSettingsForSheet(sheetName);
+  const ticketPrice = emailSettings.ticketPrice;
+  
   const rows = sheet.getDataRange().getValues().slice(1);
   let lastDate = null;
   const weekly = {};
@@ -192,23 +196,36 @@ function generateWeeklyReportPDF(sheetName, startDate, endDate) {
   }
   const rpt = ss.insertSheet(tempName);
   
-  rpt.appendRow(['日付','Webチケット','現地チケット','合計']);
+  rpt.appendRow(['日付','チケット','合計']);
   Object.keys(weekly).sort().forEach(d => {
     const w = weekly[d].web, o = weekly[d].onsite;
-    rpt.appendRow([d, w, o, w+o]);
+    const totalTickets = w + o;
+    const totalAmount = totalTickets * ticketPrice;
+    rpt.appendRow([d, totalTickets, totalAmount + '円']);
     totalWeb += w; totalOnl += o;
   });
-  rpt.appendRow(['合計', totalWeb, totalOnl, totalWeb+totalOnl]);
+  const grandTotal = totalWeb + totalOnl;
+  const grandTotalAmount = grandTotal * ticketPrice;
+  rpt.appendRow(['合計', grandTotal, '']);
+  rpt.appendRow(['総額', grandTotal + '枚 × ' + ticketPrice + '円', grandTotalAmount + '円']);
+  rpt.appendRow(['権利元への配分', grandTotal + '枚 × ' + ticketPrice/2 + '円', grandTotalAmount/2 + '円']);
   
   // スタイル調整
-  const lr = rpt.getLastRow(), lc = 4;
+  const lr = rpt.getLastRow(), lc = 3;
   rpt.getRange(1,1,lr,lc).setBorder(true,true,true,true,true,true);
   rpt.getRange(1,1,1,lc).setBackground('#d9ead3');
-  for (let i=2; i<=lr; i++) {
+  for (let i=2; i<=lr-2; i++) {
     rpt.getRange(i,1,1,lc)
        .setBackground(i%2===0? '#f3f3f3':'#ffffff');
   }
-  rpt.getRange(lr,1,1,lc).setFontWeight('bold').setBackground('#d9ead3');
+  // 合計行のスタイル
+  rpt.getRange(lr-2,1,1,lc).setFontWeight('bold').setBackground('#d9ead3');
+  // 総額行のスタイル
+  rpt.getRange(lr-1,1,1,lc).setFontWeight('bold').setBackground('#ffd966');
+  // 権利元への配分行のスタイル
+  rpt.getRange(lr,1,1,lc).setFontWeight('bold').setBackground('#ffd966');
+// 合計列（3列目）を右寄せに設定
+rpt.getRange(1, 3, lr, 1).setHorizontalAlignment('right');
   rpt.setFrozenRows(1);
   
   // PDFエクスポートURL組み立て
@@ -266,12 +283,14 @@ function sendReportForSheet(sheetName, date) {
     '',
     '',
     'お世話になっております。',
-    `上映報告botより『${displayName}』の${dateStr}の日報をお送りします。`,
+    `上映報告botより『${displayName}』の${dateStr}の日報をお送り致します。`,
     '',
     `【${displayName}】 日報`,
     ...dailyLines,
     '',
-    '以上、ご確認ください。'
+    'お忙しい中恐れ入りますが、ご確認の程宜しくお願い致します。',
+    '',
+    'Theter Guild上映報告botシステム'
   ];
   
   const body = bodyLines.join('\n');
@@ -322,7 +341,9 @@ function processSheetReportDaily(sheetName, date) {
       `【${displayName}】 日報`,
       ...dailyLines,
       '',
-      '以上、ご確認ください。'
+      'お忙しい中恐れ入りますが、ご確認の程宜しくお願い致します。',
+      '',
+      'Theter Guild上映報告botシステム'
     ];
     
     const body = bodyLines.join('\n');
@@ -379,14 +400,16 @@ function processSheetReportWithWeekly(sheetName, date) {
       '',
       '',
       'お世話になっております。',
-      `上映報告botより『${displayName}』の${dateStr}の日報をお送りします。`,
+      `上映報告botより『${displayName}』の${dateStr}の日報をお送りさせていただきます。`,
       '',
       `【${displayName}】 日報`,
       ...dailyLines,
       '',
       '週報を添付させていただきます。',
       '',
-      '以上、ご確認ください。'
+      'お忙しい中恐れ入りますが、ご確認の程宜しくお願い致します。',
+      '',
+      'Theter Guild上映報告botシステム'
     ];
     
     const body = bodyLines.join('\n');
@@ -449,7 +472,9 @@ function processSheetReport(sheetName, date) {
       `【${displayName}】 日報`,
       ...dailyLines,
       '',
-      '以上、ご確認ください。'
+      'お忙しい中恐れ入りますが、ご確認の程宜しくお願い致します。',
+      '',
+      'Theter Guild上映報告botシステム'
     ];
     
     const body = bodyLines.join('\n');
@@ -765,3 +790,4 @@ function triggerDailyReport() {
     Logger.log('自動送信エラー: ' + e.stack);
   }
 }
+
