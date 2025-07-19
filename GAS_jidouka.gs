@@ -149,12 +149,14 @@ function generateDailyReportForSheet(sheetName, date) {
     }
   });
   
-  if (lines.length === 0) {
+  const hasData = lines.length > 0;
+  
+  if (!hasData) {
     lines.push('（データがありません）');
   }
   
-  Logger.log(`[${getDisplaySheetName(sheetName)}] 日報生成完了: ${lines.length}行`);
-  return lines;
+  Logger.log(`[${getDisplaySheetName(sheetName)}] 日報生成完了: ${lines.length}行, データ有無: ${hasData}`);
+  return { lines: lines, hasData: hasData };
 }
 
 /**
@@ -326,9 +328,15 @@ function processSheetReportDaily(sheetName, date) {
     
     // 2. 日報データ集計
     Logger.log(`[${getDisplaySheetName(sheetName)}] 日報データ集計中...`);
-    const dailyLines = generateDailyReportForSheet(sheetName, date);
+    const dailyReport = generateDailyReportForSheet(sheetName, date);
     
-    // 3. メール本文作成
+    // 3. データ有無チェック
+    if (!dailyReport.hasData) {
+      Logger.log(`[${getDisplaySheetName(sheetName)}] データがないためメール送信をスキップしました`);
+      return { skipped: true, reason: 'データなし' };
+    }
+    
+    // 4. メール本文作成
     Logger.log(`[${getDisplaySheetName(sheetName)}] メール本文作成中...`);
     const displayName = getDisplaySheetName(sheetName);
     const bodyLines = [
@@ -339,7 +347,7 @@ function processSheetReportDaily(sheetName, date) {
       `上映報告botより『${displayName}』の${dateStr}の日報をお送りします。`,
       '',
       `【${displayName}】 日報`,
-      ...dailyLines,
+      ...dailyReport.lines,
       '',
       'お忙しい中恐れ入りますが、ご確認の程宜しくお願い致します。',
       '',
@@ -349,7 +357,7 @@ function processSheetReportDaily(sheetName, date) {
     const body = bodyLines.join('\n');
     const subject = `『${displayName}』上映報告`;
     
-    // 4. メール送信（PDF添付なし）
+    // 5. メール送信（PDF添付なし）
     Logger.log(`[${getDisplaySheetName(sheetName)}] メール送信中...`);
     MailApp.sendEmail({
       to: emailSettings.to,
@@ -359,6 +367,7 @@ function processSheetReportDaily(sheetName, date) {
     });
     
     Logger.log(`[${getDisplaySheetName(sheetName)}] 日報処理完了: メール送信済み`);
+    return { skipped: false };
     
   } catch (error) {
     Logger.log(`[${getDisplaySheetName(sheetName)}] 日報処理エラー: ${error.message}`);
@@ -384,15 +393,21 @@ function processSheetReportWithWeekly(sheetName, date) {
     
     // 2. 日報データ集計
     Logger.log(`[${getDisplaySheetName(sheetName)}] 日報データ集計中...`);
-    const dailyLines = generateDailyReportForSheet(sheetName, date);
+    const dailyReport = generateDailyReportForSheet(sheetName, date);
     
-    // 3. 週報データ集計とPDF生成
+    // 3. データ有無チェック
+    if (!dailyReport.hasData) {
+      Logger.log(`[${getDisplaySheetName(sheetName)}] データがないためメール送信をスキップしました`);
+      return { skipped: true, reason: 'データなし' };
+    }
+    
+    // 4. 週報データ集計とPDF生成
     Logger.log(`[${getDisplaySheetName(sheetName)}] 週報PDF生成中...`);
     const startDate = new Date(date);
     startDate.setDate(date.getDate() - 6);
     const weeklyPDF = generateWeeklyReportPDF(sheetName, startDate, date);
     
-    // 4. メール本文作成（週報添付メッセージ付き）
+    // 5. メール本文作成（週報添付メッセージ付き）
     Logger.log(`[${getDisplaySheetName(sheetName)}] メール本文作成中...`);
     const displayName = getDisplaySheetName(sheetName);
     const bodyLines = [
@@ -403,7 +418,7 @@ function processSheetReportWithWeekly(sheetName, date) {
       `上映報告botより『${displayName}』の${dateStr}の日報をお送りさせていただきます。`,
       '',
       `【${displayName}】 日報`,
-      ...dailyLines,
+      ...dailyReport.lines,
       '',
       '週報を添付させていただきます。',
       '',
@@ -415,7 +430,7 @@ function processSheetReportWithWeekly(sheetName, date) {
     const body = bodyLines.join('\n');
     const subject = `『${displayName}』上映報告`;
     
-    // 5. メール送信（PDF添付あり）
+    // 6. メール送信（PDF添付あり）
     Logger.log(`[${getDisplaySheetName(sheetName)}] メール送信中...`);
     MailApp.sendEmail({
       to: emailSettings.to,
@@ -426,6 +441,7 @@ function processSheetReportWithWeekly(sheetName, date) {
     });
     
     Logger.log(`[${getDisplaySheetName(sheetName)}] 日報・週報処理完了: メール送信済み`);
+    return { skipped: false };
     
   } catch (error) {
     Logger.log(`[${getDisplaySheetName(sheetName)}] 日報・週報処理エラー: ${error.message}`);
@@ -451,15 +467,21 @@ function processSheetReport(sheetName, date) {
     
     // 2. 日報データ集計
     Logger.log(`[${getDisplaySheetName(sheetName)}] 日報データ集計中...`);
-    const dailyLines = generateDailyReportForSheet(sheetName, date);
+    const dailyReport = generateDailyReportForSheet(sheetName, date);
     
-    // 3. 週報データ集計とPDF生成
+    // 3. データ有無チェック
+    if (!dailyReport.hasData) {
+      Logger.log(`[${getDisplaySheetName(sheetName)}] データがないためメール送信をスキップしました`);
+      return { skipped: true, reason: 'データなし' };
+    }
+    
+    // 4. 週報データ集計とPDF生成
     Logger.log(`[${getDisplaySheetName(sheetName)}] 週報PDF生成中...`);
     const startDate = new Date(date);
     startDate.setDate(date.getDate() - 6);
     const weeklyPDF = generateWeeklyReportPDF(sheetName, startDate, date);
     
-    // 4. メール本文作成
+    // 5. メール本文作成
     Logger.log(`[${getDisplaySheetName(sheetName)}] メール本文作成中...`);
     const displayName = getDisplaySheetName(sheetName);
     const bodyLines = [
@@ -470,7 +492,7 @@ function processSheetReport(sheetName, date) {
       `上映報告botより『${displayName}』の${dateStr}の日報をお送りします。`,
       '',
       `【${displayName}】 日報`,
-      ...dailyLines,
+      ...dailyReport.lines,
       '',
       'お忙しい中恐れ入りますが、ご確認の程宜しくお願い致します。',
       '',
@@ -480,7 +502,7 @@ function processSheetReport(sheetName, date) {
     const body = bodyLines.join('\n');
     const subject = `『${displayName}』上映報告`;
     
-    // 5. メール送信
+    // 6. メール送信
     Logger.log(`[${getDisplaySheetName(sheetName)}] メール送信中...`);
     MailApp.sendEmail({
       to: emailSettings.to,
@@ -491,6 +513,7 @@ function processSheetReport(sheetName, date) {
     });
     
     Logger.log(`[${getDisplaySheetName(sheetName)}] 処理完了: メール送信済み`);
+    return { skipped: false };
     
   } catch (error) {
     Logger.log(`[${getDisplaySheetName(sheetName)}] 処理エラー: ${error.message}`);
@@ -537,6 +560,7 @@ function sendDailyReportSequential(date) {
       total: sheetNames.length,
       success: 0,
       failed: 0,
+      skipped: 0,
       errors: []
     };
     
@@ -547,8 +571,14 @@ function sendDailyReportSequential(date) {
       
       try {
         // 日報のみ処理を実行
-        processSheetReportDaily(sheetName, targetDate);
-        results.success++;
+        const result = processSheetReportDaily(sheetName, targetDate);
+        
+        if (result && result.skipped) {
+          results.skipped++;
+          Logger.log(`[${getDisplaySheetName(sheetName)}] スキップ: ${result.reason}`);
+        } else {
+          results.success++;
+        }
         
       } catch (error) {
         results.failed++;
@@ -569,6 +599,7 @@ function sendDailyReportSequential(date) {
     Logger.log(`=== 日報順次処理完了: ${dateStr} ===`);
     Logger.log(`成功: ${results.success}/${results.total}シート`);
     Logger.log(`失敗: ${results.failed}/${results.total}シート`);
+    Logger.log(`スキップ: ${results.skipped}/${results.total}シート（データなし）`);
     
     if (results.errors.length > 0) {
       Logger.log('エラー詳細:');
@@ -606,6 +637,7 @@ function sendDailyReportWithWeeklySequential(date) {
       total: sheetNames.length,
       success: 0,
       failed: 0,
+      skipped: 0,
       errors: []
     };
     
@@ -616,8 +648,14 @@ function sendDailyReportWithWeeklySequential(date) {
       
       try {
         // 日報・週報処理を実行
-        processSheetReportWithWeekly(sheetName, targetDate);
-        results.success++;
+        const result = processSheetReportWithWeekly(sheetName, targetDate);
+        
+        if (result && result.skipped) {
+          results.skipped++;
+          Logger.log(`[${getDisplaySheetName(sheetName)}] スキップ: ${result.reason}`);
+        } else {
+          results.success++;
+        }
         
       } catch (error) {
         results.failed++;
@@ -638,6 +676,7 @@ function sendDailyReportWithWeeklySequential(date) {
     Logger.log(`=== 日報・週報順次処理完了: ${dateStr} ===`);
     Logger.log(`成功: ${results.success}/${results.total}シート`);
     Logger.log(`失敗: ${results.failed}/${results.total}シート`);
+    Logger.log(`スキップ: ${results.skipped}/${results.total}シート（データなし）`);
     
     if (results.errors.length > 0) {
       Logger.log('エラー詳細:');
@@ -718,10 +757,10 @@ function manualIndividualReport() {
     const results = sendDailyReportSequential(yesterday);
     
     // 結果に応じてメッセージを変更
-    if (results.failed === 0) {
+    if (results.failed === 0 && results.skipped === 0) {
       ui.alert(`日報・週報PDF（シート別個別）をメール送信しました\n成功: ${results.success}/${results.total}シート`);
     } else {
-      ui.alert(`日報・週報PDF（シート別個別）の送信が完了しました\n成功: ${results.success}/${results.total}シート\n失敗: ${results.failed}/${results.total}シート\n\n詳細はログを確認してください。`);
+      ui.alert(`日報・週報PDF（シート別個別）の送信が完了しました\n成功: ${results.success}/${results.total}シート\n失敗: ${results.failed}/${results.total}シート\nスキップ: ${results.skipped}/${results.total}シート（データなし）\n\n詳細はログを確認してください。`);
     }
   } catch (e) {
     ui.alert('エラーが発生しました:\n' + e.message);
@@ -737,10 +776,10 @@ function manualDailyReportOnly() {
     
     const results = sendDailyReportSequential(yesterday);
     
-    if (results.failed === 0) {
+    if (results.failed === 0 && results.skipped === 0) {
       ui.alert(`日報のみを送信しました\n成功: ${results.success}/${results.total}シート`);
     } else {
-      ui.alert(`日報送信が完了しました\n成功: ${results.success}/${results.total}シート\n失敗: ${results.failed}/${results.total}シート\n\n詳細はログを確認してください。`);
+      ui.alert(`日報送信が完了しました\n成功: ${results.success}/${results.total}シート\n失敗: ${results.failed}/${results.total}シート\nスキップ: ${results.skipped}/${results.total}シート（データなし）\n\n詳細はログを確認してください。`);
     }
   } catch (e) {
     ui.alert('エラーが発生しました:\n' + e.message);
@@ -756,10 +795,10 @@ function manualDailyReportWithWeekly() {
     
     const results = sendDailyReportWithWeeklySequential(yesterday);
     
-    if (results.failed === 0) {
+    if (results.failed === 0 && results.skipped === 0) {
       ui.alert(`日報・週報を送信しました\n成功: ${results.success}/${results.total}シート`);
     } else {
-      ui.alert(`日報・週報送信が完了しました\n成功: ${results.success}/${results.total}シート\n失敗: ${results.failed}/${results.total}シート\n\n詳細はログを確認してください。`);
+      ui.alert(`日報・週報送信が完了しました\n成功: ${results.success}/${results.total}シート\n失敗: ${results.failed}/${results.total}シート\nスキップ: ${results.skipped}/${results.total}シート（データなし）\n\n詳細はログを確認してください。`);
     }
   } catch (e) {
     ui.alert('エラーが発生しました:\n' + e.message);
